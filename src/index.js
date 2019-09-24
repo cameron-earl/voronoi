@@ -106,36 +106,22 @@ function trianglesToEdges(triangles) {
 }
 
 function voronoi(triangles) {
-  const top = new Segment(new Point(minX, minY), new Point(maxX, minY));
 
-  // for each triangle
-  //  for each later triangle
-  //    if triangles share an edge, create segment using circumcenters
-  const segments = [];
+  const sharedEdges = [];
   for (let i = 0; i < triangles.length - 1; i++) {
     for (let j = i + 1; j < triangles.length; j++) {
       const [t1, t2] = [triangles[i], triangles[j]];
       if (t1.sharesEdge(t2)) {
         const s = new Segment(t1.circumCircle.center, t2.circumCircle.center);
-        segments.push(s);
+        sharedEdges.push(s);
       }
     }
   }
 
-  for (let s of segments) {
+  for (let s of sharedEdges) {
     s.display(ctx, 'white');
   }
 
-  /*
-    for each edge
-      if edge is not shared
-        create line perpendicular to edge
-        // identify which direction is "out"
-        // create ray from outer side of line originating at circumcenter
-  
-  */
-
-  // return segments;
   const edges = {};
   for (const t of triangles) {
     const e1 = new Segment(t.p1, t.p2);
@@ -149,27 +135,19 @@ function voronoi(triangles) {
       }
     }
   }
-  console.log('quack', edges);
 
-  const borders = Object.values(edges)
+  const outerEdges = Object.values(edges)
     .filter(e => e.triangles.length === 1)
     .map(e => {
+      // TODO: Find a way to reliably select the correct half of the line
       const args = [e.triangles[0].circumCircle.center, e.edge.getCenter(), maxX, maxY];
       const startAway = e.triangles[0].containsCircumcenter();
       const ray = new Ray(...args, startAway);
-      const intersectCount = segments.reduce((sum, s) => sum + !!s.getIntersect(ray), 0);
-      console.log(intersectCount);
-      if (intersectCount > 1) {
-        return ray;
-      }
-      return new Ray(...args, !startAway);
-      // const ray2 = new Ray(...args, !startAway);
-      return ray;
+      const intersectCount = sharedEdges.reduce((sum, s) => sum + !!s.getIntersect(ray), 0);
+      // TODO: intersectCount does not seem to be working
+      // console.log(intersectCount);
+      return (intersectCount > 1) ? ray : new Ray(...args, !startAway);
     });
-  // console.log('borders', borders);
-  // for (let b of borders) {
-  //   b.display(ctx, 'purple');
-  // }
 
-  return [...segments, ...borders];
+  return [...sharedEdges, ...outerEdges];
 }
