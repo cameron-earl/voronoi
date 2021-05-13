@@ -1,9 +1,15 @@
 const sortPoints = (a, b) => a.x - b.x || a.y - b.y;
 
 class Point {
-  constructor(x, y) {
+
+  constructor(x, y, setVelocity = false) {
+    const randomV = () => (Math.random() - 0.5) * 3;
     this.x = x;
     this.y = y;
+    if (setVelocity) {
+      this.velocityX = randomV();
+      this.velocityY = randomV();
+    }
   }
 
   distanceTo(p2) {
@@ -23,22 +29,46 @@ class Point {
   }
 
   display(ctx, color = 'green') {
-    ctx.beginPath();
-    ctx.fillStyle = color;
-    ctx.moveTo(this.x, this.y);
-    ctx.arc(this.x, this.y, 3, 0, 2 * Math.PI);
-    ctx.closePath();
-    ctx.fill();
+    // ctx.beginPath();
+    // ctx.fillStyle = color;
+    // ctx.moveTo(this.x, this.y);
+    // ctx.arc(this.x, this.y, 3, 0, 2 * Math.PI);
+    // ctx.closePath();
+    // ctx.fill();
   }
   
   toString() {
     return `(${this.x},${this.y})`;
   }
+
+  updatePosition(canvas) {
+    if (!this.velocityX || !this.velocityY) {
+      return;
+    }
+    let newX = this.x + this.velocityX;
+    if (newX < 0 || newX > canvas.width) {
+      this.velocityX *= -1;
+      newX += this.velocityX;
+    }
+
+    this.x = newX;
+
+    let newY = this.y + this.velocityY;
+    if (newY < 0 || newY > canvas.height) {
+      this.velocityY *= -1;
+      newY += this.velocityY;
+    }
+
+    this.y = newY;
+  }
+
+  isWithinCanvas(canvas) {
+    return this.x > 0 && this.y > 0 && this.x < canvas.width && this.y < canvas.height;
+  }
 }
 
 class Segment {
   constructor(p1, p2) {
-    // console.log('segment constructor', p1, p2)
     const points = [p1, p2].sort(sortPoints);
     this.p1 = points[0];
     this.p2 = points[1];
@@ -78,12 +108,18 @@ class Segment {
     if (dotProduct < 0) return false; // not in range
     const squaredLengthba = (b.x - a.x) * (b.x - a.x) + (b.y - a.y) * (b.y - a.y);
     if (dotProduct > squaredLengthba) return false; // not in range
-    // console.log('containsPoint', this, p, crossProduct, dotProduct, squaredLengthba)
     return true;
   }
 
   display(ctx, color = 'blue') {
     ctx.beginPath();
+    if (!this.p1.isWithinCanvas(ctx.canvas) || !this.p2.isWithinCanvas(ctx.canvas)) {
+      color = 'magenta';
+      if ([this.p1.x, this.p1.y, this.p2.x, this.p2.y].some(n => Math.abs(n) > 10000)) {
+        color = 'lime';
+        // console.log('blah', this.p1, this.p2);
+      }
+    }
     ctx.strokeStyle = color;
     ctx.moveTo(this.p1.x, this.p1.y);
     ctx.lineTo(this.p2.x, this.p2.y);
@@ -102,7 +138,6 @@ class Segment {
 
 class Line {
   constructor(...args) {
-    // console.log('Line constructor', ...args)
     if (args.length === 1 && args[0] instanceof Segment) {
       return new Line(args[0].m, args[0].p1);
     } else if (args.length === 2 && args[0] instanceof Point && args[1] instanceof Point) {
@@ -182,6 +217,7 @@ class Line {
 }
 
 class Ray extends Segment {
+
   constructor(origin, p, maxX, maxY, awayFromP = false) {
     if (origin.x < 0 || origin.x > maxX || origin.y < 0 || origin.Y > maxY) {
       return new Segment(new Point(-1,-1), new Point(-2, -2));
@@ -192,8 +228,19 @@ class Ray extends Segment {
     if (!edgeP || edgeP.y > maxY || edgeP.y < 0) {
       edgeP = l.getPointAtY((p.y < origin.y !== awayFromP)  ? 0 : maxY);
     }
-    console.log('Ray constructor', origin, p, awayFromP, edgeP);
-    return super(origin, edgeP);
+    const val = super(origin, edgeP);
+    val.awayFromP = awayFromP;
+    this.awayFromP = awayFromP
+    return val;
+  }
+
+  display(ctx, color = this.awayFromP ? 'red' : 'white') {
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.moveTo(this.p1.x, this.p1.y);
+    ctx.lineTo(this.p2.x, this.p2.y);
+    ctx.closePath();
+    ctx.stroke();
   }
 }
 
@@ -266,14 +313,14 @@ class Triangle {
 
   display(ctx, color = 'black') {
     ctx.beginPath();
-    ctx.fillStyle = 'rgba(255,255,0,0.5)';
+    // ctx.fillStyle = 'rgba(255,255,0,0.5)';
     ctx.strokeStyle = color;
     ctx.moveTo(this.p1.x, this.p1.y);
     ctx.lineTo(this.p2.x, this.p2.y);
     ctx.lineTo(this.p3.x, this.p3.y);
     ctx.lineTo(this.p1.x, this.p1.y);
     ctx.closePath();
-    ctx.fill();
+    // ctx.fill();
     ctx.stroke();
   }
 }

@@ -10,7 +10,7 @@
 const { randInt } = require('./helpers');
 const { Point, Triangle, Segment, Ray, Line, sortPoints } = require('./Geometry');
 
-const pointCount = 15;
+const pointCount = 30;
 const minX = 0;
 const minY = 0;
 const maxX = 1200;
@@ -20,35 +20,76 @@ const height = maxY - minY;
 const margin = 10;
 const CANVAS = document.querySelector('canvas');
 const ctx = CANVAS.getContext('2d');
-
-initialize();
+ctx.canvas.width = width;
+ctx.canvas.height = height;
+const centerPoint = new Point(CANVAS.width / 2, CANVAS.height / 2);
+let interval;
+let tickFn;
+let paused = true;
 
 function initialize() {
-  ctx.canvas.width = width;
-  ctx.canvas.height = height;
-  ctx.canvas.style.backgroundColor = 'lime';
+  console.log('initialize');
+  ctx.canvas.style.backgroundColor = '#ccc';
 
   const points = new Array(pointCount)
     .fill(null)
-    .map(p => new Point(randInt(minX + margin, maxX - margin), randInt(minY + margin, maxY - margin)))
+    .map(p => new Point(randInt(minX + margin, maxX - margin), randInt(minY + margin, maxY - margin, ctx), true))
     .sort((a, b) => a.x - b.x || a.y - b.y)
     .filter((e, i, a) => !i || e.x !== a[i - 1].x || e.y !== a[i - 1].y);
-  drawPoints(points);
-  console.log(points, points.length);
-  const delaunayEdges = delaunay(points);
-  const voronoiEdges = voronoi(delaunayEdges);
-  for (let edge of delaunayEdges) {
-    console.log(edge);
-    edge.display(ctx, 'pink');
+  tickFn = tick(points);
+  // interval = window.setInterval(tickFn, 50);
+  document.querySelector('button#togglePlayButton').addEventListener('click', togglePlay);
+  document.querySelector('button#tickButton').addEventListener('click', pauseAndTick);
+}
+
+function togglePlay(ev, pause = !paused) {
+  if (pause) {
+    window.clearInterval(interval);
+  } else {
+    interval = window.setInterval(tickFn, 50);
   }
+  paused = pause;
+}
+
+function pauseAndTick() {
+  togglePlay(null, true);
+  tickFn();
+}
+
+function tick(points) {
+  let savedPoints = points;
+  return () => {
+    console.log(`%ctick - ${new Date().valueOf()}`, 'background-color: fuchsia ; color: white ; font-weight: bold ; ');
+    const [pArr, delaunayEdges, voronoiEdges] = calculatePositions(savedPoints);
+    savedPoints = pArr;
+    drawScreen(pArr, delaunayEdges, voronoiEdges);
+  }
+}
+
+function calculatePositions(pArr) {
+  pArr.forEach(p => p.updatePosition(ctx.canvas));
+  const delaunayEdges = delaunay(pArr);
+  const voronoiEdges = voronoi(delaunayEdges);
+  return [pArr, delaunayEdges, voronoiEdges];
+}
+
+function drawScreen(points, delaunayEdges, voronoiEdges) {
+  ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+  drawPoints(points);
+
+  for (let edge of delaunayEdges) {
+    edge.display(ctx, 'rgba(0,0,0,0.1)');
+  }
+
   for (let s of voronoiEdges) {
-    s.display(ctx, 'blue');
+    s.display(ctx);
   }
 }
 
 function drawPoints(points, color) {
   ctx.beginPath();
-  ctx.fillStyle = color || 'green';
+  ctx.fillStyle = color || 'black';
   for (let point of points) {
     ctx.moveTo(point.x, point.y);
     ctx.arc(point.x, point.y, 3, 0, 2 * Math.PI);
@@ -60,7 +101,7 @@ function drawPoints(points, color) {
 // bowyer-watson algorithm https://en.wikipedia.org/wiki/Bowyer%E2%80%93Watson_algorithm
 function delaunay(points) {
   // create triangle with circumcircle containing whole grid. each triangle should have point and circumcircle data.
-  const bigNum = Number.MAX_SAFE_INTEGER / 2;
+  const bigNum = Number.MAX_SAFE_INTEGER / 3;
   const outerTrianglePoints = [
     new Point(minX - bigNum, maxY + bigNum),
     new Point(minX + width / 2, minY - bigNum),
@@ -68,13 +109,10 @@ function delaunay(points) {
   ];
   let triangles = [new Triangle(...outerTrianglePoints)];
   for (let p of points) {
-    // for (let triangle of triangles) {
-    //   triangle.display(ctx);
-    //   triangle.circumCircle.display(ctx);
-    // }
     const badTriangles = [];
     const goodTriangles = [];
     for (let triangle of triangles) {
+      
       if (triangle.circumCircle.containsPoint(p)) {
         badTriangles.push(triangle);
       } else {
@@ -86,7 +124,7 @@ function delaunay(points) {
       .sort((a, b) => p.angleTo(a) - p.angleTo(b) || p.distanceTo(a) - p.distanceTo(b))
       .filter((p, i, a) => !i || !p.equals(a[i - 1]))
       .map((p1, i, arr) => new Triangle(p, p1, arr[(i + 1) % arr.length]));
-
+    
     triangles = [...goodTriangles, ...newTriangles];
   }
 
@@ -94,6 +132,12 @@ function delaunay(points) {
   // for (let triangle of triangles) {
   //   triangle.display(ctx);
   // }
+  console.log(triangles.length)
+
+  if (triangles.length > 52) {
+    console.log({triangles});
+    togglePlay(null, true);
+  }
   return triangles;
 }
 
@@ -118,9 +162,9 @@ function voronoi(triangles) {
     }
   }
 
-  for (let s of sharedEdges) {
-    s.display(ctx, 'white');
-  }
+  // for (let s of sharedEdges) {
+  //   s.display(ctx, 'white');
+  // }
 
   const edges = {};
   for (const t of triangles) {
@@ -137,17 +181,20 @@ function voronoi(triangles) {
   }
 
   const outerEdges = Object.values(edges)
-    .filter(e => e.triangles.length === 1)
+    .filter(e => {
+      return e.triangles.length === 1 && e.triangles[0].circumCircle.center.isWithinCanvas(ctx.canvas);
+    })
     .map(e => {
-      // TODO: Find a way to reliably select the correct half of the line
-      const args = [e.triangles[0].circumCircle.center, e.edge.getCenter(), maxX, maxY];
-      const startAway = e.triangles[0].containsCircumcenter();
-      const ray = new Ray(...args, startAway);
-      const intersectCount = sharedEdges.reduce((sum, s) => sum + !!s.getIntersect(ray), 0);
-      // TODO: intersectCount does not seem to be working
-      // console.log(intersectCount);
-      return (intersectCount > 1) ? ray : new Ray(...args, !startAway);
+      const origin = e.triangles[0].circumCircle.center;
+      const edgeCenter = e.edge.getCenter()
+      const args = [origin, edgeCenter, maxX, maxY];
+      const originDistance = centerPoint.distanceTo(origin);
+      const edgeDistance = centerPoint.distanceTo(edgeCenter);
+      const startAway =  (originDistance > edgeDistance);
+      return new Ray(...args, startAway);
     });
 
   return [...sharedEdges, ...outerEdges];
 }
+
+initialize();
